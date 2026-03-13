@@ -46,7 +46,9 @@ class DeviceChecker:
                     errors='replace'
                 )
 
-                if 'TTL=' in result.stdout or 'ответ' in result.stdout.lower() or 'Reply' in result.stdout:
+                stdout = result.stdout or ""
+
+                if 'TTL=' in stdout or 'ответ' in stdout.lower() or 'Reply' in stdout:
                     if attempt > 0:
                         logger.info(f"Ping успешен с попытки {attempt + 1}")
                     return True
@@ -137,7 +139,7 @@ class DeviceChecker:
         """Полная проверка: AD (опционально) + Ping + PowerShell"""
         logger.info(f"Проверка устройства: {computer_name}")
 
-        result = {
+        result: Dict[str, Any] = {
             'computer_name': computer_name,
             'ping_available': False,
             'ad_exists': False,
@@ -148,54 +150,68 @@ class DeviceChecker:
             'status': 'Unknown'
         }
 
-        # 1. Попытка проверки через AD (не критично)
-        if LDAP_AVAILABLE:
-            try:
-                ad_result = DeviceChecker.check_via_ad(computer_name, username, password)
-                result['ad_exists'] = ad_result.get('exists_in_ad', False)
-                result['ad_enabled'] = ad_result.get('enabled_in_ad')
+        try:
+            # 1. Попытка проверки через AD (не критично)
+            if LDAP_AVAILABLE:
+                try:
+                    ad_result = DeviceChecker.check_via_ad(computer_name, username, password)
+                    result['ad_exists'] = ad_result.get('exists_in_ad', False)
+                    result['ad_enabled'] = ad_result.get('enabled_in_ad')
 
-                if ad_result.get('os_from_ad'):
-                    result['os_info']['from_ad'] = ad_result['os_from_ad']
-                    os_lower = ad_result['os_from_ad'].lower()
-                    if 'windows 7' in os_lower or '2008' in os_lower:
-                        result['recommended_os'] = 'Win7'
-                    elif 'windows 10' in os_lower or 'windows 11' in os_lower:
-                        result['recommended_os'] = 'Win10'
+                    os_from_ad = ad_result.get('os_from_ad')
+                    if os_from_ad:
+                        result['os_info']['from_ad'] = os_from_ad
+                        try:
+                            os_lower = str(os_from_ad).lower()
+                        except Exception:
+                            os_lower = ""
 
-                result['status'] = ad_result.get('status', 'Unknown')
+                        if 'windows 7' in os_lower or '2008' in os_lower:
+                            result['recommended_os'] = 'Win7'
+                        elif 'windows 10' in os_lower or 'windows 11' in os_lower:
+                            result['recommended_os'] = 'Win10'
 
-            except Exception as e:
-                logger.warning(f"AD проверка пропущена: {e}")
+                    result['status'] = ad_result.get('status', 'Unknown')
 
-        # 2. Ping проверка (обязательная для сетевой доступности)
-        if DeviceChecker.ping(computer_name):
-            result['ping_available'] = True
-            logger.success(f"Ping успешен: {computer_name}")
+                except Exception as e:
+                    logger.warning(f"AD проверка пропущена: {e}")
 
-            # 3. Если нет данных из AD, пробуем получить ОС через PowerShell
-            if not result.get('os_info', {}).get('caption'):
-                os_info = DeviceChecker._get_os_info_powershell(computer_name, username, password)
-                if os_info:
-                    result['os_info'].update(os_info)
-                    os_lower = os_info.get('caption', '').lower()
-                    if 'windows 7' in os_lower or '2008' in os_lower:
-                        result['recommended_os'] = 'Win7'
-                    elif 'windows 10' in os_lower or 'windows 11' in os_lower:
-                        result['recommended_os'] = 'Win10'
-
-            # Статус по умолчанию, если не определён
-            if result['status'] == 'Unknown':
-                result['status'] = 'NetworkAvailable'
-
-        else:
-            logger.warning(f"Ping не прошёл: {computer_name}")
-            # Если компьютер есть в AD, считаем его доступным
-            if result.get('ad_exists'):
+            # 2. Ping проверка (обязательная для сетевой доступности)
+            if DeviceChecker.ping(computer_name):
                 result['ping_available'] = True
-                result['status'] = 'InAD'
+                logger.success(f"Ping успешен: {computer_name}")
+
+                # 3. Если нет данных из AD, пробуем получить ОС через PowerShell
+                if not result.get('os_info', {}).get('caption'):
+                    os_info = DeviceChecker._get_os_info_powershell(computer_name, username, password)
+                    if os_info:
+                        result['os_info'].update(os_info)
+                        try:
+                            os_lower = str(os_info.get('caption', '')).lower()
+                        except Exception:
+                            os_lower = ""
+
+                        if 'windows 7' in os_lower or '2008' in os_lower:
+                            result['recommended_os'] = 'Win7'
+                        elif 'windows 10' in os_lower or 'windows 11' in os_lower:
+                            result['recommended_os'] = 'Win10'
+
+                # Статус по умолчанию, если не определён
+                if result['status'] == 'Unknown':
+                    result['status'] = 'NetworkAvailable'
+
             else:
-                result['status'] = 'Unavailable'
+                logger.warning(f"Ping не прошёл: {computer_name}")
+                # Если компьютер есть в AD, считаем его доступным
+                if result.get('ad_exists'):
+                    result['ping_available'] = True
+                    result['status'] = 'InAD'
+                else:
+                    result['status'] = 'Unavailable'
+
+        except Exception as e:
+            # Полная защита от внутренних ошибок, чтобы не падать на GUI
+            logger.error(f"Внутренняя ошибка проверки устройства: {type(e).__name__}: {e}")
 
         return result
 
@@ -220,9 +236,18 @@ class DeviceChecker:
             }} | ConvertTo-Json
             """
 
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
             proc = subprocess.run(
                 ['powershell', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
-                capture_output=True, text=True, timeout=20, encoding='utf-8', errors='replace'
+                capture_output=True,
+                text=True,
+                timeout=20,
+                encoding='utf-8',
+                errors='replace',
+                startupinfo=startup,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
 
             if proc.returncode == 0 and proc.stdout.strip():
@@ -270,9 +295,18 @@ class DeviceChecker:
             }} | ConvertTo-Json
             """
 
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
             proc = subprocess.run(
                 ['powershell', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
-                capture_output=True, text=True, timeout=30, encoding='utf-8', errors='replace'
+                capture_output=True,
+                text=True,
+                timeout=30,
+                encoding='utf-8',
+                errors='replace',
+                startupinfo=startup,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
 
             if proc.returncode == 0 and proc.stdout.strip():

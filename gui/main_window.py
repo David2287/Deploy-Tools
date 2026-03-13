@@ -22,8 +22,11 @@ class MainWindow:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Deploy Tool - Система развёртывания ПО")
-        self.root.geometry("950x800")
-        self.root.resizable(False, False)
+        self.default_geometry = "950x800"
+        self.root.geometry(self.default_geometry)
+        # Разрешаем изменение размера окна
+        self.root.resizable(True, True)
+        self.root.minsize(900, 650)
 
         # Переменные
         self.cached_credentials: Optional[Dict[str, str]] = None
@@ -38,6 +41,9 @@ class MainWindow:
         # Настройка логгера
         logger.set_gui_callback(self._log_callback)
 
+        # Текущая тема
+        self.current_theme = tk.StringVar(value="light")
+
         # Создание интерфейса
         self._create_styles()
         self._create_widgets()
@@ -51,20 +57,151 @@ class MainWindow:
         logger.info("=" * 60)
 
     def _create_styles(self):
-        """Настройка стилей"""
-        style = ttk.Style()
-        style.theme_use('clam')
-        style.configure('TFrame', background='#f0f0f0')
-        style.configure('TLabelFrame', background='#f0f0f0', foreground='#333333')
-        style.configure('TLabel', background='#f0f0f0', foreground='#333333')
-        style.configure('Header.TLabel', font=('Segoe UI', 12, 'bold'))
-        style.configure('Accent.TButton', foreground='white', background='#0078D4', font=('Segoe UI', 10, 'bold'))
+        """Настройка стилей приложения"""
+        self.style = ttk.Style()
+
+        # Базовая тема
+        try:
+            self.style.theme_use('clam')
+        except tk.TclError:
+            pass
+
+        # Цветовая схема и стили зависят от темы
+        self._apply_theme()
+
+    def _apply_theme(self):
+        """Применить текущую тему (светлая / тёмная)"""
+        theme = self.current_theme.get()
+
+        # Палитра в духе Material / Tailwind:
+        # Светлая: фон White, текст Black, серые 200–500, акцент Blue 300
+        # Тёмная: фон Gray 900, текст Gray 100, серые 400–700, акцент Sky 300
+
+        if theme == "dark":
+            # Тёмная тема
+            self.base_bg = "#111827"       # Gray 900 – общий фон
+            self.surface_bg = "#1f2933"    # Gray 800 – карточки/фреймы
+            self.header_fg = "#e5e7eb"     # Gray 200
+            self.text_fg = "#e5e7eb"       # Gray 200
+            self.subtext_fg = "#9ca3af"    # Gray 400
+            self.icon_fg = "#9ca3af"       # Gray 400
+            self.muted_fg = "#6b7280"      # Gray 500
+            self.accent_color = "#38bdf8"  # Sky 300
+            self.danger_color = "#f97373"  # Red 400
+            status_bg = "#030712"          # ещё темнее для статус-бара
+            status_fg = "#e5e7eb"
+        else:
+            # Светлая тема
+            self.base_bg = "#f3f4f6"       # Gray 100 – общий фон
+            self.surface_bg = "#ffffff"    # White – карточки/фреймы
+            self.header_fg = "#111827"     # Gray 900 – заголовки
+            self.text_fg = "#111827"       # Gray 900 – основной текст
+            self.subtext_fg = "#6b7280"    # Gray 500 – подписи
+            self.icon_fg = "#6b7280"       # Gray 500 – иконки/мелкий текст
+            self.muted_fg = "#9ca3af"      # Gray 400 – вторичный текст
+            self.accent_color = "#60a5fa"  # Blue 400 / 300 – акцент
+            self.danger_color = "#f97373"  # Red 400
+            status_bg = "#e5e7eb"          # Gray 200
+            status_fg = "#374151"          # Gray 700
+
+        self.root.configure(bg=self.base_bg)
+
+        # Базовые стили
+        self.style.configure(
+            '.',
+            background=self.base_bg,
+            foreground=self.text_fg,
+            font=('Segoe UI', 10)
+        )
+        self.style.configure('TFrame', background=self.base_bg)
+        self.style.configure(
+            'TLabelFrame',
+            background=self.surface_bg,
+            foreground=self.header_fg,
+            borderwidth=1,
+            relief='solid'
+        )
+        self.style.configure('TLabel', background=self.surface_bg, foreground=self.text_fg)
+        self.style.configure(
+            'Header.TLabel',
+            font=('Segoe UI', 16, 'bold'),
+            foreground=self.header_fg,
+            background=self.base_bg
+        )
+        self.style.configure(
+            'SubHeader.TLabel',
+            font=('Segoe UI', 9),
+            foreground=self.subtext_fg,
+            background=self.base_bg
+        )
+
+        # Поля ввода и переключатели
+        entry_bg = "#0f172a" if theme == "dark" else "#ffffff"   # Gray 900 / White
+        entry_border = "#1f2937" if theme == "dark" else "#d1d5db"
+
+        self.style.configure(
+            'TEntry',
+            foreground=self.text_fg,
+            fieldbackground=entry_bg,
+            background=entry_bg,
+            bordercolor=entry_border,
+            lightcolor=entry_border,
+            darkcolor=entry_border,
+            insertcolor=self.text_fg
+        )
+
+        self.style.configure(
+            'TCheckbutton',
+            background=self.surface_bg,
+            foreground=self.text_fg
+        )
+        self.style.configure(
+            'TRadiobutton',
+            background=self.surface_bg,
+            foreground=self.text_fg
+        )
+
+        # Кнопки
+        self.style.configure(
+            'Accent.TButton',
+            foreground='white',
+            background=self.accent_color,
+            borderwidth=0,
+            focusthickness=3,
+            focuscolor=self.accent_color,
+            padding=(12, 6)
+        )
+        self.style.map(
+            'Accent.TButton',
+            background=[('active', '#106ebe'), ('disabled', '#a6c7e8')]
+        )
+
+        self.style.configure(
+            'Secondary.TButton',
+            foreground=self.accent_color,
+            background="#dbeafe" if theme != "dark" else "#1d3a5f",
+            borderwidth=0,
+            padding=(10, 5)
+        )
+
+        self.style.configure(
+            'Danger.TButton',
+            foreground='white',
+            background=self.danger_color,
+            borderwidth=0,
+            padding=(10, 5)
+        )
+
+        # Статус‑бар
+        self.style.configure('Status.TLabel', background=status_bg, foreground=status_fg, anchor='w')
 
     def _create_widgets(self):
         """Создание элементов интерфейса"""
 
+        base_bg = getattr(self, "base_bg", "#f5f5f7")
+
         # Главный фрейм
-        main_frame = ttk.Frame(self.root, padding=10)
+        main_frame = ttk.Frame(self.root, padding=12)
         main_frame.pack(fill='both', expand=True)
 
         # === Заголовок ===
@@ -73,83 +210,87 @@ class MainWindow:
 
         ttk.Label(
             header_frame,
-            text="🚀 Deploy Tool - Система развёртывания ПО",
+            text="Deploy Tool",
             style='Header.TLabel'
         ).pack(anchor='w')
 
-        ttk.Separator(header_frame, orient='horizontal').pack(fill='x', pady=5)
+        ttk.Label(
+            header_frame,
+            text="Быстрая установка стандартного ПО на рабочие станции",
+            style='SubHeader.TLabel'
+        ).pack(anchor='w', pady=(2, 0))
+
+        ttk.Separator(header_frame, orient='horizontal').pack(fill='x', pady=8)
 
         # === Группа: Информация об устройстве ===
-        device_frame = ttk.LabelFrame(main_frame, text="📁 Информация об устройстве", padding=10)
+        device_frame = ttk.LabelFrame(main_frame, text="Устройство", padding=10)
         device_frame.pack(fill='x', pady=5)
+        device_frame.columnconfigure(1, weight=1)
 
-        device_row1 = ttk.Frame(device_frame)
-        device_row1.pack(fill='x', pady=2)
-
-        ttk.Label(device_row1, text="Имя устройства:", width=15).pack(side='left')
-        self.computer_entry = ttk.Entry(device_row1, width=30)
-        self.computer_entry.pack(side='left', padx=5)
+        ttk.Label(device_frame, text="Имя устройства:").grid(row=0, column=0, sticky='w', padx=(0, 8), pady=3)
+        self.computer_entry = ttk.Entry(device_frame, width=30)
+        self.computer_entry.grid(row=0, column=1, sticky='we', pady=3)
         self.computer_entry.bind('<Return>', lambda e: self._check_device())
 
-        self.check_button = ttk.Button(device_row1, text="✓ Проверить", command=self._check_device)
-        self.check_button.pack(side='left', padx=5)
+        self.check_button = ttk.Button(device_frame, text="Проверить доступность", command=self._check_device)
+        self.check_button.grid(row=0, column=2, sticky='w', padx=(8, 0), pady=3)
 
-        device_row2 = ttk.Frame(device_frame)
-        device_row2.pack(fill='x', pady=2)
+        self.status_label = StatusLabel(device_frame, text="Статус: не проверено", width=40)
+        self.status_label.grid(row=1, column=0, columnspan=2, sticky='w', pady=3)
 
-        self.status_label = StatusLabel(device_row2, text="Статус: Не проверено", width=40)
-        self.status_label.pack(side='left', padx=5)
-
-        self.os_label = StatusLabel(device_row2, text="ОС: Не определено", width=40)
-        self.os_label.pack(side='left', padx=5)
+        self.os_label = StatusLabel(device_frame, text="ОС: не определено", width=40)
+        self.os_label.grid(row=1, column=2, sticky='w', pady=3)
 
         # === Группа: Учётные данные ===
-        creds_frame = ttk.LabelFrame(main_frame, text="🔐 Учётные данные администратора", padding=10)
+        creds_frame = ttk.LabelFrame(main_frame, text="Учётные данные администратора", padding=10)
         creds_frame.pack(fill='x', pady=5)
+        creds_frame.columnconfigure(1, weight=1)
 
-        creds_row = ttk.Frame(creds_frame)
-        creds_row.pack(fill='x', pady=2)
-
-        ttk.Label(creds_row, text="Логин:", width=15).pack(side='left')
-        self.login_entry = ttk.Entry(creds_row, width=28)
-        self.login_entry.pack(side='left', padx=5)
+        ttk.Label(creds_frame, text="Логин:").grid(row=0, column=0, sticky='w', padx=(0, 8), pady=3)
+        self.login_entry = ttk.Entry(creds_frame, width=28)
+        self.login_entry.grid(row=0, column=1, sticky='we', pady=3)
         self.login_entry.insert(0, f"{os.environ.get('USERDOMAIN', '')}\\{os.environ.get('USERNAME', '')}")
 
-        ttk.Label(creds_row, text="Пароль:", width=10).pack(side='left', padx=(20, 0))
-        self.password_entry = ttk.Entry(creds_row, width=25, show="*")
-        self.password_entry.pack(side='left', padx=5)
+        ttk.Label(creds_frame, text="Пароль:").grid(row=1, column=0, sticky='w', padx=(0, 8), pady=3)
+        self.password_entry = ttk.Entry(creds_frame, width=28, show="*")
+        self.password_entry.grid(row=1, column=1, sticky='we', pady=3)
 
-        creds_row2 = ttk.Frame(creds_frame)
-        creds_row2.pack(fill='x', pady=2)
-
-        self.cred_status_label = StatusLabel(creds_row2, text="Статус: Не проверено", width=50)
-        self.cred_status_label.pack(side='left', padx=5)
+        self.cred_status_label = StatusLabel(creds_frame, text="Статус: не проверено", width=40)
+        self.cred_status_label.grid(row=0, column=2, rowspan=2, sticky='w', padx=(12, 0))
 
         ttk.Button(
-            creds_row2,
-            text="🔐 Проверить учётные данные",
+            creds_frame,
+            text="Проверить учётные данные",
             command=self._validate_credentials
-        ).pack(side='right', padx=5)
+        ).grid(row=2, column=2, sticky='e', padx=(12, 0), pady=(6, 0))
 
         self.save_creds_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(creds_frame, text="Сохранить учётные данные для текущей сессии", variable=self.save_creds_var).pack(anchor='w', pady=5)
+        ttk.Checkbutton(
+            creds_frame,
+            text="Сохранить учётные данные для текущей сессии",
+            variable=self.save_creds_var
+        ).grid(row=2, column=0, columnspan=2, sticky='w', pady=(8, 0))
 
         # === Группа: Выбор ОС ===
-        os_frame = ttk.LabelFrame(main_frame, text="💻 Операционная система", padding=10)
+        os_frame = ttk.LabelFrame(main_frame, text="Операционная система", padding=10)
         os_frame.pack(fill='x', pady=5)
 
         self.os_type = tk.StringVar(value="Win10")
-        ttk.Radiobutton(os_frame, text="Windows 7", variable=self.os_type, value="Win7").pack(side='left', padx=10)
-        ttk.Radiobutton(os_frame, text="Windows 10/11", variable=self.os_type, value="Win10").pack(side='left', padx=10)
+        ttk.Radiobutton(os_frame, text="Windows 7 / Server 2008", variable=self.os_type, value="Win7").pack(
+            side='left', padx=(0, 16)
+        )
+        ttk.Radiobutton(os_frame, text="Windows 10 / 11", variable=self.os_type, value="Win10").pack(
+            side='left'
+        )
 
         # === Группа: Выбор программ ===
-        apps_frame = ttk.LabelFrame(main_frame, text="📦 Программы для установки", padding=10)
+        apps_frame = ttk.LabelFrame(main_frame, text="Программы для установки", padding=10)
         apps_frame.pack(fill='both', expand=True, pady=5)
 
         apps_header = ttk.Frame(apps_frame)
         apps_header.pack(fill='x', pady=(0, 5))
 
-        ttk.Label(apps_header, text="Отметьте программы для установки:").pack(side='left')
+        ttk.Label(apps_header, text="Отметьте программы, которые нужно установить:").pack(side='left')
 
         def select_all():
             for var in self.app_vars.values():
@@ -159,35 +300,47 @@ class MainWindow:
             for var in self.app_vars.values():
                 var.set(False)
 
-        ttk.Button(apps_header, text="✓ Все", command=select_all, width=8).pack(side='right', padx=2)
-        ttk.Button(apps_header, text="✗ Сброс", command=deselect_all, width=8).pack(side='right', padx=2)
+        ttk.Button(apps_header, text="Выбрать все", command=select_all, style='Secondary.TButton').pack(
+            side='right', padx=2
+        )
+        ttk.Button(apps_header, text="Сбросить", command=deselect_all).pack(side='right', padx=2)
+
+        # Прокручиваемый список программ
+        container = ttk.Frame(apps_frame)
+        container.pack(fill='both', expand=True)
+
+        canvas = tk.Canvas(container, borderwidth=0, highlightthickness=0, background=base_bg)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        scrollable = ttk.Frame(canvas)
+
+        scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
         self.app_vars: Dict[str, tk.BooleanVar] = {}
-        apps_inner = ttk.Frame(apps_frame)
-        apps_inner.pack(fill='both', expand=True)
 
-        mid = len(APPLICATIONS) // 2
-        apps_list = list(APPLICATIONS.keys())
-
-        for i, app_name in enumerate(apps_list):
+        for i, app_name in enumerate(APPLICATIONS.keys()):
             var = tk.BooleanVar(value=False)
             self.app_vars[app_name] = var
-
-            col = 0 if i < mid else 1
-            row = i if i < mid else i - mid
-
-            cb = ttk.Checkbutton(apps_inner, text=app_name, variable=var)
-            cb.grid(row=row, column=col, sticky='w', padx=10, pady=3)
+            ttk.Checkbutton(scrollable, text=app_name, variable=var).grid(
+                row=i, column=0, sticky='w', padx=10, pady=3
+            )
 
         ttk.Button(
             apps_frame,
-            text="🚀 Установить выбранные",
+            text="Установить выбранные",
             command=self._start_deployment,
             style='Accent.TButton'
         ).pack(fill='x', pady=(10, 0))
 
         # === Группа: Консоль вывода ===
-        console_frame = ttk.LabelFrame(main_frame, text="📋 Журнал выполнения", padding=10)
+        console_frame = ttk.LabelFrame(main_frame, text="Журнал выполнения", padding=10)
         console_frame.pack(fill='both', expand=True, pady=5)
 
         self.console = ConsoleWidget(console_frame, height=10)
@@ -199,22 +352,28 @@ class MainWindow:
 
         self.deploy_button = ttk.Button(
             button_frame,
-            text="🚀 ЗАПУСТИТЬ УСТАНОВКУ",
+            text="Запустить установку",
             command=self._start_deployment,
             style='Accent.TButton'
         )
-        self.deploy_button.pack(side='left', padx=5)
+        self.deploy_button.pack(side='left')
 
-        ttk.Button(button_frame, text="🗑 Очистить лог", command=self._clear_log).pack(side='left', padx=5)
-        ttk.Button(button_frame, text="💾 Экспорт лога", command=self._export_log).pack(side='left', padx=5)
-        ttk.Button(button_frame, text="❌ Выход", command=self._exit).pack(side='right', padx=5)
+        ttk.Button(button_frame, text="Очистить лог", command=self._clear_log).pack(side='left', padx=(8, 0))
+        ttk.Button(button_frame, text="Экспорт лога", command=self._export_log).pack(side='left', padx=(8, 0))
+
+        ttk.Button(
+            button_frame,
+            text="Выход",
+            command=self._exit,
+            style='Danger.TButton'
+        ).pack(side='right')
 
         # === Прогресс бар ===
         self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
-        self.progress.pack(fill='x', pady=5)
+        self.progress.pack(fill='x', pady=(0, 4))
 
         # === Статус бар ===
-        self.status_bar = ttk.Label(main_frame, text="Готов к работе", relief='sunken', anchor='w')
+        self.status_bar = ttk.Label(main_frame, text="Готов к работе", style='Status.TLabel')
         self.status_bar.pack(fill='x', side='bottom')
 
     def _create_menu(self):
@@ -228,9 +387,52 @@ class MainWindow:
         file_menu.add_separator()
         file_menu.add_command(label="Выход", command=self._exit)
 
+        view_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Вид", menu=view_menu)
+
+        # Подменю темы
+        theme_menu = tk.Menu(view_menu, tearoff=0)
+        view_menu.add_cascade(label="Тема", menu=theme_menu)
+        theme_menu.add_radiobutton(
+            label="Светлая",
+            variable=self.current_theme,
+            value="light",
+            command=lambda: self._set_theme("light")
+        )
+        theme_menu.add_radiobutton(
+            label="Тёмная",
+            variable=self.current_theme,
+            value="dark",
+            command=lambda: self._set_theme("dark")
+        )
+
+        # Размер окна
+        view_menu.add_separator()
+        view_menu.add_command(label="Стандартный размер", command=self._set_window_normal)
+        view_menu.add_command(label="Развернуть на весь экран", command=self._set_window_maximized)
+
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Справка", menu=help_menu)
         help_menu.add_command(label="О программе", command=self._show_about)
+
+    def _set_theme(self, theme: str):
+        """Смена темы оформления"""
+        self.current_theme.set(theme)
+        self._apply_theme()
+
+    def _set_window_normal(self):
+        """Вернуть стандартный размер окна"""
+        self.root.state('normal')
+        self.root.geometry(self.default_geometry)
+
+    def _set_window_maximized(self):
+        """Развернуть окно на весь экран"""
+        try:
+            # На Windows state('zoomed') даёт развёрнутое окно
+            self.root.state('zoomed')
+        except tk.TclError:
+            # Fallback: просто максимально увеличить окно
+            self.root.attributes('-zoomed', True)
 
     def _log_callback(self, message: str, level: str):
         """Callback для логирования в GUI"""
@@ -352,6 +554,10 @@ class MainWindow:
             self.cred_status_label.set_status('success', "✓ Домен: Проверено")
         else:
             self.cred_status_label.set_status('warning', "⚠ Не проверено")
+
+        # Финальный статус проверки
+        logger.info("Проверка устройства завершена")
+        self._set_status("Проверка завершена")
 
     def _validate_credentials(self):
         """Проверка учётных данных"""

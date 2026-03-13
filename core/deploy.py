@@ -32,13 +32,18 @@ class DeployManager:
     def _run_local_powershell(self, script: str, timeout: int = None) -> Tuple[bool, str, str]:
         """Выполнение PowerShell скрипта локально"""
         try:
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
             result = subprocess.run(
                 ['powershell', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-Command', script],
                 capture_output=True,
                 text=True,
                 timeout=timeout or 120,
                 encoding='utf-8',
-                errors='replace'
+                errors='replace',
+                startupinfo=startup,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
 
             stdout = result.stdout.strip() if result.stdout else ""

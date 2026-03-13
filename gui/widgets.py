@@ -28,19 +28,23 @@ class ConsoleWidget(tk.Frame):
             self.text_frame,
             wrap='word',
             yscrollcommand=self.scrollbar.set,
-            bg='#1e1e1e',
-            fg='#00ff00',
-            font=('Consolas', 9),
-            state='disabled'
+            bg='#020617',      # почти чёрный фон (Gray 950)
+            fg='#e5e7eb',      # светлый текст (Gray 200)
+            insertbackground='#e5e7eb',
+            font=('Consolas', 10),
+            state='disabled',
+            borderwidth=0,
+            highlightthickness=0
         )
         self.text.pack(side='left', fill='both', expand=True)
         self.scrollbar.config(command=self.text.yview)
 
-        # Теги для цветов
-        self.text.tag_configure('INFO', foreground='#00ff00')
-        self.text.tag_configure('SUCCESS', foreground='#00ff00')
-        self.text.tag_configure('WARNING', foreground='#ffff00')
-        self.text.tag_configure('ERROR', foreground='#ff0000')
+        # Теги для цветов (в духе Material / системных сообщений)
+        self.text.tag_configure('DEBUG', foreground='#9ca3af')     # серый текст
+        self.text.tag_configure('INFO', foreground='#e5e7eb')      # обычный текст
+        self.text.tag_configure('SUCCESS', foreground='#4ade80')   # зелёный (Green 400)
+        self.text.tag_configure('WARNING', foreground='#facc15')   # жёлтый (Yellow 400)
+        self.text.tag_configure('ERROR', foreground='#f97373')     # красный (Red 400)
 
     def append(self, message: str, level: str = 'INFO'):
         """Добавить сообщение в консоль"""
